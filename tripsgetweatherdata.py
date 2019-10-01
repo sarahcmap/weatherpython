@@ -8,6 +8,7 @@ import pandas as pd
 import bisect
 import numpy as np
 import time
+import re
 
 #trips = pd.read_csv("C:/Users/sbuchhorn/Desktop/hhts/weather/sample_datasets/MDT_201811_one_hh_per_zip.csv")
 trips = pd.read_csv("D:/weather/fromnickaug19/trips_time_location.csv")
@@ -28,8 +29,36 @@ weatherdatatest = weatherdata[['latitude','longitude','datetime','heat_index_c',
 stations = weatherdata[['latitude','longitude']].dropna()
 stations = stations.drop_duplicates(['latitude','longitude']).reset_index(drop=True)
 stations['stationid'] = stations.index
+
+# some of these "unique stations" are actually the same.  assign the same ID to those within 1/2 mile.
+stationduplicate = {}
+for i in range(0,len(stations)):
+    for x in range (0,len(stations)):
+        distance = geopy.distance.distance(stations.loc[i], stations.loc[x]).miles
+        stationduplicate[(i,x)] = distance
+stationdupdf = pd.DataFrame.from_dict(stationduplicate,orient='index')
+stationdupdf = stationdupdf[(stationdupdf[0] > 0) & (stationdupdf[0] < 0.25)]
+stationdupdf.reset_index(inplace=True)
+stationdupdf['left'] = 0
+stationdupdf['right'] = 0
+for i,row in stationdupdf.iterrows():
+    stationdupdf.iloc[i,2] = stationdupdf['index'][i][:][0]
+    stationdupdf.iloc[i,3] = stationdupdf['index'][i][:][1]
+
+for i in range(0,len(stationdupdf) + 1):
+    try:
+        y = stationdupdf.loc[i,'right']
+        stationdupdf = stationdupdf[stationdupdf['left'] != y]
+    except KeyError:
+        continue
+
+stations = stations.merge(stationdupdf[['left','right']],left_on='stationid',right_on='right',how="outer")
+stations.loc[stations['right'] >= 0,'stationid'] = stations['left']
+
+
 # stations.to_csv("C:/Users/sbuchhorn/Desktop/stations.csv")
-stations.to_csv("D:/weather/stations19.csv")
+stations.to_csv("D:/weather/2019_try2/stations19.csv")
+stations = stations[['latitude','longitude','stationid']]
 
 # match trip coords with weather station
 places = trips[['latitude','longitude']]
@@ -38,26 +67,42 @@ uniplaces['placeid'] = uniplaces.index
 
 stationdistance = {}
 
-# for 2019, 23918 uniplaces, 107 stations, started 8:30AM, finished 8:54AM
+# for 2019, 23918 uniplaces, 54 unique stations,
+# first round: started 8:30AM, finished 8:54AM
+# second round: 21 min
 starttime = time.time()
-for i in range(0, 50):#len(uniplaces)):
+for i in range(0, len(uniplaces)):
     for x in range(0,len(stations)):
         distance = geopy.distance.distance(uniplaces.loc[i],stations.loc[x]).miles
         stationdistance[(i,x)] = distance
     # i will match the placeid
 print(time.time() - starttime)
 
-# closest station {i: x}, {placeid: stationid} - but what if the closest station doesn't have good observations?  should
-# investigate this in result
 
 closest_stationdf = pd.DataFrame.from_dict(stationdistance, orient='index')
-closest_stationdf['placeid'] = closest_stationdf.index
-closest_stationdf.rename({0:'stationid'},axis=1,inplace=True)
-closest_stationdf.to_csv("D:/weather/closest_station19.csv")
+closest_stationdf['placeid:stationid'] = closest_stationdf.index
+closest_stationdf.rename({0:'distance'},axis=1,inplace=True)
+closest_stationdf.to_csv("D:/weather/2019_try2/closest_station19.csv")
+
+# get just the stations that are 30 miles or less away from place
+closestmini = closest_stationdf[closest_stationdf['distance'] <= 30] # should it be 20??
+closestmini.to_csv("D:/weather/2019_try2/closest_station19mini.csv")
 
 #if using from file:
-closest_stationdf = pd.read_csv("D:/weather/closest_station19.csv")
+closest_stationdf = pd.read_csv("D:/weather/2019_try2/closest_station19mini.csv")
 
+# or get the closest station - what a mess! WIP
+# TODO fix this
+closest_stationdf.loc[:,'placeid'] = closest_stationdf['placeid:stationid'].str.split(pat="\,")
+closest_stationdf.loc[:,'placeid'] = closest_stationdf['placeid'].str[:1]
+closest_stationdf.loc[:,'stationid'] = closest_stationdf['placeid:stationid'].str.split(pat="\,")
+closest_stationdf.loc[:,'stationid'] = closest_stationdf['stationid'].str[1:2]
+closest_stationdf['placeid'] = closest_stationdf.placeid.astype(str).str.replace("\(","")
+closest_stationdf['stationid'] = closest_stationdf.stationid.astype(str).str.replace(")","").replace("[","")
+
+
+
+closest_stationdf.sort_values('distance').drop_duplicates('placeid')
 
 # need to get stationid into weatherdatatest via lat/long (which station goes with which observation)
 stationreadings = stations.merge(weatherdatatest,on=['latitude','longitude']) # so we'll just want one of these rows for weather data
@@ -71,7 +116,11 @@ tripswplaceid = trips.merge(uniplaces,on=['latitude','longitude'])
 
 
 # now, get station id in with the trips table
+# if you want just the closest one
 tripswstation = tripswplaceid.merge(closest_stationdf,on='placeid')
+
+#TODO: if you want the list of all within x miles
+
 tripswstationdep = tripswstation[tripswstation['deptime'] != "-1"] # 2915 --> 2277 // 2019: 65691 to 50881
 tripswstationdep['deptimedt'] = pd.to_datetime(tripswstationdep['deptime'], utc=False)
 tripswstationdep['deptimedtcentral'] = pd.to_datetime(tripswstationdep['deptimedt']).dt.tz_localize('US/Central')
@@ -96,7 +145,14 @@ for i in range(0, len(tripswstationdep)):
         continue
     else:
         timetomatch = tripswstationdep.loc[i]['deptimedtcentral']
+        # you can either match closest or closest time in a list
+
+        # match closest time in a list implementation
         choices = stationreadings[stationreadings['stationid'].isin(acceptablelist)].sort_values('datetimecentral',ascending=True)
+
+        # match closest station implementation
+        choices = stationreadings[stationreadings['stationid'] == #closestid].sort_values('datetimecentral',ascending=True)
+
         choicesseries = choices['datetimecentral']
         choiceslist = [x for x in choicesseries]
         t = bisect.bisect_left(choiceslist, timetomatch)
