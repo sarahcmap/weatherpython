@@ -34,75 +34,88 @@ weatherdatatest = weatherdata[['latitude', 'longitude', 'datetime', 'heat_index_
 
 ################################################
 # Weather Stations - get unique stations and save to refer to later
-stations = weatherdata[['latitude', 'longitude']].dropna()
-stations = stations.drop_duplicates(['latitude', 'longitude']).reset_index(drop=True)
-stations['stationid'] = stations.index
-
-# some of these "unique stations" are actually the same.  assign the same ID to those within 1/2 mile.
-stationduplicate = {}
-for i in range(0, len(stations)):
-    for x in range(0, len(stations)):
-        distance = geopy.distance.distance(stations.loc[i], stations.loc[x]).miles
-        stationduplicate[(i, x)] = distance
-stationdupdf = pd.DataFrame.from_dict(stationduplicate, orient='index')
-stationdupdf = stationdupdf[(stationdupdf[0] > 0) & (stationdupdf[0] < 0.25)]
-stationdupdf.reset_index(inplace=True)
-stationdupdf['left'] = 0
-stationdupdf['right'] = 0
-for i, row in stationdupdf.iterrows():
-    stationdupdf.iloc[i, 2] = stationdupdf['index'][i][:][0]
-    stationdupdf.iloc[i, 3] = stationdupdf['index'][i][:][1]
-
-for i in range(0, len(stationdupdf) + 1):
-    try:
-        y = stationdupdf.loc[i, 'right']
-        stationdupdf = stationdupdf[stationdupdf['left'] != y]
-    except KeyError:
-        continue
-
-stations = stations.merge(stationdupdf[['left', 'right']], left_on='stationid', right_on='right', how="outer")
-stations.loc[stations['right'] >= 0, 'stationid'] = stations['left']
+# stations = weatherdata[['latitude', 'longitude']].dropna()
+# stations = stations.drop_duplicates(['latitude', 'longitude']).reset_index(drop=True)
+# stations['stationid'] = stations.index
+#
+# # some of these "unique stations" are actually the same.  assign the same ID to those within 1/2 mile.
+# stationduplicate = {}
+# for i in range(0, len(stations)):
+#     for x in range(0, len(stations)):
+#         distance = geopy.distance.distance(stations.loc[i], stations.loc[x]).miles
+#         stationduplicate[(i, x)] = distance
+# stationdupdf = pd.DataFrame.from_dict(stationduplicate, orient='index')
+# stationdupdf = stationdupdf[(stationdupdf[0] > 0) & (stationdupdf[0] < 0.25)]
+# stationdupdf.reset_index(inplace=True)
+# stationdupdf['left'] = 0
+# stationdupdf['right'] = 0
+# for i, row in stationdupdf.iterrows():
+#     stationdupdf.iloc[i, 2] = stationdupdf['index'][i][:][0]
+#     stationdupdf.iloc[i, 3] = stationdupdf['index'][i][:][1]
+#
+# for i in range(0, len(stationdupdf) + 1):
+#     try:
+#         y = stationdupdf.loc[i, 'right']
+#         stationdupdf = stationdupdf[stationdupdf['left'] != y]
+#     except KeyError:
+#         continue
+#
+# stations = stations.merge(stationdupdf[['left', 'right']], left_on='stationid', right_on='right', how="outer")
+# stations.loc[stations['right'] >= 0, 'stationid'] = stations['left']
 # save to file
-stations.to_csv("D:/weather/2019_try2/stations19.csv")
+# stations.to_csv("D:/weather/2019_try2/stations19.csv")
+# or read from file
+stations = pd.read_csv("D:/weather/2019_try2/stations19.csv")
 stations = stations[['latitude', 'longitude', 'stationid']]
 stationsdict = dict(zip(stations.index, stations.stationid))
 
 
 ################################################
 # Trips + Weather Stations - match trip coords with weather station
-places = trips[['latitude', 'longitude']]
-uniplaces = places.drop_duplicates(['latitude','longitude']).reset_index(drop=True)
-uniplaces['placeid'] = uniplaces.index
+# places = trips[['latitude', 'longitude']]
+# uniplaces = places.drop_duplicates(['latitude','longitude']).reset_index(drop=True)
+# uniplaces['placeid'] = uniplaces.index
+#
+# stationdistance = {}
+#
+# starttime = time.time()
+# for i in range(0, len(uniplaces)):
+#     for x in range(0,len(stations)):
+#         distance = geopy.distance.distance(uniplaces.loc[i], stations.loc[x]).miles
+#         stationdistance[(i, x)] = distance
+# print(time.time() - starttime)
+#
+# closest_stationdf = pd.DataFrame.from_dict(stationdistance, orient='index')
+# closest_stationdf['placeid:stationid'] = closest_stationdf.index    # this is actually the station index, not id
+# closest_stationdf.rename({0: 'distance'},axis=1,inplace=True)
+# closest_stationdf.to_csv("D:/weather/2019_try2/closest_station19.csv")
 
-stationdistance = {}
-
-starttime = time.time()
-for i in range(0, len(uniplaces)):
-    for x in range(0,len(stations)):
-        distance = geopy.distance.distance(uniplaces.loc[i], stations.loc[x]).miles
-        stationdistance[(i, x)] = distance
-print(time.time() - starttime)
-
-closest_stationdf = pd.DataFrame.from_dict(stationdistance, orient='index')
-closest_stationdf['placeid:stationid'] = closest_stationdf.index    # this is actually the station index, not id
-closest_stationdf.rename({0: 'distance'},axis=1,inplace=True)
-closest_stationdf.to_csv("D:/weather/2019_try2/closest_station19.csv")
+# get from file
+closest_stationdf = pd.read_csv("D:/weather/2019_try2/closest_station19.csv")
 
 # get just the stations that are 30 miles or less away from place
-closestmini = closest_stationdf[closest_stationdf['distance'] <= 30]
-closestmini.to_csv("D:/weather/2019_try2/closest_station19mini.csv")
+# closestmini = closest_stationdf[closest_stationdf['distance'] <= 30]
+# closestmini.to_csv("D:/weather/2019_try2/closest_station19mini.csv")
 
 # if using from file:
-closest_stationdf = pd.read_csv("D:/weather/2019_try2/closest_station19mini.csv")
+#closest_stationdf = pd.read_csv("D:/weather/2019_try2/closest_station19mini.csv")
 
 # or get the closest station
 closest_stationdf['placeid'] = closest_stationdf['placeid:stationid'].apply(lambda x: x.split(",")[0].strip("("))
 closest_stationdf['stationid'] = closest_stationdf['placeid:stationid'].apply(lambda x: x.split(",")[1].strip(")"))
-closest_stationdf = closest_stationdf.sort_values('distance').drop_duplicates('placeid')
+#closest_stationdf = closest_stationdf.sort_values('distance').drop_duplicates('placeid')
 closest_stationdf['stationid'] = closest_stationdf['stationid'].astype(int).map(stationsdict)
 
+# mmmm ok, now i need to know which stations are in 10,20,30, and >30 miles.
+closest_stationdf.loc[(closest_stationdf['distance'] >= 30), 'distscore'] = 4
+closest_stationdf.loc[(closest_stationdf['distance'] < 30), 'distscore'] = 3
+closest_stationdf.loc[(closest_stationdf['distance'] < 20), 'distscore'] = 2
+closest_stationdf.loc[(closest_stationdf['distance'] < 10), 'distscore'] = 1
+
+# TODO 10/2 - figure out how to do like...tiered matching
+
 # need to get stationid into weatherdatatest via lat/long (which station goes with which observation)
-stationreadings = stations.merge(weatherdatatest,on=['latitude', 'longitude']) # so we'll just want one of these rows for weather data
+stationreadings = stations.merge(weatherdatatest, on=['latitude', 'longitude']) # so we'll just want one of these rows for weather data
 stationreadings['datetime'] = pd.to_datetime(stationreadings['datetime'], utc=True)
 stationreadings['datetimecentral'] = stationreadings.datetime.dt.tz_convert('US/Central')
 
@@ -114,10 +127,10 @@ tripswplaceid = trips.merge(uniplaces, on=['latitude', 'longitude'])
 
 # now, get station id in with the trips table
 # if you want just the closest one
-closest_stationdf['placeid'] = closest_stationdf['placeid'].astype('int64')
-tripswstation = tripswplaceid.merge(closest_stationdf, on='placeid')
+# closest_stationdf['placeid'] = closest_stationdf['placeid'].astype('int64')
+# tripswstation = tripswplaceid.merge(closest_stationdf, on='placeid')
 
-#TODO: if you want the list of all within x miles
+# TODO: if you want the list of all within x miles
 
 tripswstationdep = tripswstation[tripswstation['deptime'] != "-1"]
 tripswstationdep['deptimedt'] = pd.to_datetime(tripswstationdep['deptime'], utc=False)
@@ -180,7 +193,7 @@ print(time.time() - starttime)
 tripswdata = pd.read_csv("D:/weather/2019_try2/2019results2.csv")
 tripswdata.datetimecentral = pd.to_datetime(tripswdata['datetimecentral'], utc=True)
 tripswdata.datetimecentral = tripswdata.datetimecentral.dt.tz_convert('US/Central')
-tripswdata.to_csv("D:/weather/2019_try2/2019results2.csv")
+tripswdata.to_csv("D:/weather/2019_try2/2019results_central.csv")
 
 # validation - should know time difference and miles for each trip
 tripswdata.placeid.describe()
@@ -192,7 +205,7 @@ tripswdata['hours'] = tripswdata['timediff'].astype('timedelta64[h]')
 
 tripswdata.groupby('stationid').agg({'hours': 'mean'})
 
-tripswdata.to_csv("D:/weather/tripswdataval.csv")
+tripswdata.to_csv("D:/weather/2019_try2/tripswdataval2.csv")
 
 
 
