@@ -72,9 +72,9 @@ stationsdict = dict(zip(stations.index, stations.stationid))
 
 ################################################
 # Trips + Weather Stations - match trip coords with weather station
-# places = trips[['latitude', 'longitude']]
-# uniplaces = places.drop_duplicates(['latitude','longitude']).reset_index(drop=True)
-# uniplaces['placeid'] = uniplaces.index
+places = trips[['latitude', 'longitude']]
+uniplaces = places.drop_duplicates(['latitude','longitude']).reset_index(drop=True)
+uniplaces['placeid'] = uniplaces.index
 #
 # stationdistance = {}
 #
@@ -103,8 +103,8 @@ closest_stationdf = pd.read_csv("D:/weather/2019_try2/closest_station19.csv")
 # or get the closest station
 closest_stationdf['placeid'] = closest_stationdf['placeid:stationid'].apply(lambda x: x.split(",")[0].strip("("))
 closest_stationdf['stationid'] = closest_stationdf['placeid:stationid'].apply(lambda x: x.split(",")[1].strip(")"))
-#closest_stationdf = closest_stationdf.sort_values('distance').drop_duplicates('placeid')
-closest_stationdf['stationid'] = closest_stationdf['stationid'].astype(int).map(stationsdict)
+closest_stationdftrue = closest_stationdf.sort_values('distance').drop_duplicates('placeid')
+closest_stationdf['stationid'] = closest_stationdf['stationid'].astype(int).map(stationsdict)   # this means that all of the duplicates are still in this list
 
 # mmmm ok, now i need to know which stations are in 10,20,30, and >30 miles.
 closest_stationdf.loc[(closest_stationdf['distance'] >= 30), 'distscore'] = 4
@@ -125,27 +125,32 @@ stationreadings['datetimecentral'] = stationreadings.datetime.dt.tz_convert('US/
 # get placeid into trips via lat/long
 tripswplaceid = trips.merge(uniplaces, on=['latitude', 'longitude'])
 
-# now, get station id in with the trips table
-# if you want just the closest one
-# closest_stationdf['placeid'] = closest_stationdf['placeid'].astype('int64')
+# no station id added
+trips2 = tripswplaceid[tripswplaceid['deptime'] != "-1"]
+trips2['deptimedt'] = pd.to_datetime(trips2['deptime'], utc=False)
+trips2['deptimedtcentral'] = pd.to_datetime(trips2['deptimedt']).dt.tz_localize('US/Central')
+trips2.reset_index(inplace=True)
+
+# closest station id added
+closest_stationdf['placeid'] = closest_stationdf['placeid'].astype('int64')
 # tripswstation = tripswplaceid.merge(closest_stationdf, on='placeid')
 
-# TODO: if you want the list of all within x miles
+# tripswstationdep = tripswstation[tripswstation['deptime'] != "-1"]
+# tripswstationdep['deptimedt'] = pd.to_datetime(tripswstationdep['deptime'], utc=False)
+# tripswstationdep['deptimedtcentral'] = pd.to_datetime(tripswstationdep['deptimedt']).dt.tz_localize('US/Central')
+# tripswstationdep.reset_index(inplace=True)
 
-tripswstationdep = tripswstation[tripswstation['deptime'] != "-1"]
-tripswstationdep['deptimedt'] = pd.to_datetime(tripswstationdep['deptime'], utc=False)
-tripswstationdep['deptimedtcentral'] = pd.to_datetime(tripswstationdep['deptimedt']).dt.tz_localize('US/Central')
-tripswstationdep.reset_index(inplace=True)
+# TODO: if you want the list of all within x miles
 
 # adding weather columns in
 for x in [#'stationid',
           'heat_index_c','heat_index_f','relative_humidity','temp_c','temp_f','weather',
          'wind_gust_mph','wind_mph','windchill_c','windchill_f']:
-    tripswstationdep[x] = np.nan
-tripswstationdep['datetimecentral'] = pd.datetime(2099, 9, 9, 9, 9, 9, 9)
+    trips2[x] = np.nan
+trips2['datetimecentral'] = pd.datetime(2099, 9, 9, 9, 9, 9, 9)
 
 # remove reference to initial df so we don't get warnings
-tripswstationdep = tripswstationdep.copy()
+trips3 = trips2.copy()
 
 
 ################################################
@@ -153,7 +158,27 @@ tripswstationdep = tripswstationdep.copy()
 starttime = time.time()
 readingsdict = {}
 
-for i in range(0, len(tripswstationdep)):
+binlist = closest_stationdf[closest_stationdf['distscore'] < 4].groupby(['placeid','distscore'])['stationid'].apply(list)
+binlist = binlist.reset_index()
+binlist['stationid'] = binlist.stationid.apply(set)
+binlist.set_index('placeid',inplace=True)
+# i want to get this where the placeid is the index, the dist score is the header, and the station ids are the entries
+
+trips3.merge(closest_stationdf[closest_stationdf['distscore'] != 4], on='placeid')
+
+for i in range(0,len(trips3)):
+    trips3
+
+trips3
+closest_stationdf
+stationreadings
+
+
+
+
+
+
+for i in range(0, len(trips3)):
     if i % 10000 == 0:
         print(i)
     acceptablelist = tripswstationdep.loc[i]['stationid']   # or 'stationidlist'
