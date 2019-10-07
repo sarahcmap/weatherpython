@@ -18,9 +18,6 @@ import time
 ################################################
 # Trips - read in and filter dates
 trips = pd.read_csv("D:/weather/fromnickaug19/trips_time_location.csv")
-# 9/3/18 (Labor Day)
-# trips = trips[trips['travdate'] >= '2018-09-03']
-# OR, just doing 2019
 trips = trips[trips['travdate'] >= '2019-01-01']
 
 
@@ -34,37 +31,6 @@ weatherdatatest = weatherdata[['latitude', 'longitude', 'datetime', 'heat_index_
 
 ################################################
 # Weather Stations - get unique stations and save to refer to later
-# stations = weatherdata[['latitude', 'longitude']].dropna()
-# stations = stations.drop_duplicates(['latitude', 'longitude']).reset_index(drop=True)
-# stations['stationid'] = stations.index
-#
-# # some of these "unique stations" are actually the same.  assign the same ID to those within 1/2 mile.
-# stationduplicate = {}
-# for i in range(0, len(stations)):
-#     for x in range(0, len(stations)):
-#         distance = geopy.distance.distance(stations.loc[i], stations.loc[x]).miles
-#         stationduplicate[(i, x)] = distance
-# stationdupdf = pd.DataFrame.from_dict(stationduplicate, orient='index')
-# stationdupdf = stationdupdf[(stationdupdf[0] > 0) & (stationdupdf[0] < 0.25)]
-# stationdupdf.reset_index(inplace=True)
-# stationdupdf['left'] = 0
-# stationdupdf['right'] = 0
-# for i, row in stationdupdf.iterrows():
-#     stationdupdf.iloc[i, 2] = stationdupdf['index'][i][:][0]
-#     stationdupdf.iloc[i, 3] = stationdupdf['index'][i][:][1]
-#
-# for i in range(0, len(stationdupdf) + 1):
-#     try:
-#         y = stationdupdf.loc[i, 'right']
-#         stationdupdf = stationdupdf[stationdupdf['left'] != y]
-#     except KeyError:
-#         continue
-#
-# stations = stations.merge(stationdupdf[['left', 'right']], left_on='stationid', right_on='right', how="outer")
-# stations.loc[stations['right'] >= 0, 'stationid'] = stations['left']
-# save to file
-# stations.to_csv("D:/weather/2019_try2/stations19.csv")
-# or read from file
 stations = pd.read_csv("D:/weather/2019_try2/stations19.csv")
 stations = stations[['latitude', 'longitude', 'stationid']]
 stationsdict = dict(zip(stations.index, stations.stationid))
@@ -75,44 +41,29 @@ stationsdict = dict(zip(stations.index, stations.stationid))
 places = trips[['latitude', 'longitude']]
 uniplaces = places.drop_duplicates(['latitude','longitude']).reset_index(drop=True)
 uniplaces['placeid'] = uniplaces.index
-#
-# stationdistance = {}
-#
-# starttime = time.time()
-# for i in range(0, len(uniplaces)):
-#     for x in range(0,len(stations)):
-#         distance = geopy.distance.distance(uniplaces.loc[i], stations.loc[x]).miles
-#         stationdistance[(i, x)] = distance
-# print(time.time() - starttime)
-#
-# closest_stationdf = pd.DataFrame.from_dict(stationdistance, orient='index')
-# closest_stationdf['placeid:stationid'] = closest_stationdf.index    # this is actually the station index, not id
-# closest_stationdf.rename({0: 'distance'},axis=1,inplace=True)
-# closest_stationdf.to_csv("D:/weather/2019_try2/closest_station19.csv")
 
 # get from file
 closest_stationdf = pd.read_csv("D:/weather/2019_try2/closest_station19.csv")
 
-# get just the stations that are 30 miles or less away from place
-# closestmini = closest_stationdf[closest_stationdf['distance'] <= 30]
-# closestmini.to_csv("D:/weather/2019_try2/closest_station19mini.csv")
-
-# if using from file:
-#closest_stationdf = pd.read_csv("D:/weather/2019_try2/closest_station19mini.csv")
-
-# or get the closest station
+# get station distances
 closest_stationdf['placeid'] = closest_stationdf['placeid:stationid'].apply(lambda x: x.split(",")[0].strip("("))
 closest_stationdf['stationid'] = closest_stationdf['placeid:stationid'].apply(lambda x: x.split(",")[1].strip(")"))
-closest_stationdftrue = closest_stationdf.sort_values('distance').drop_duplicates('placeid')
 closest_stationdf['stationid'] = closest_stationdf['stationid'].astype(int).map(stationsdict)   # this means that all of the duplicates are still in this list
 
-# mmmm ok, now i need to know which stations are in 10,20,30, and >30 miles.
+# need to know which stations are in 10,20,30, and >30 miles.
 closest_stationdf.loc[(closest_stationdf['distance'] >= 30), 'distscore'] = 4
 closest_stationdf.loc[(closest_stationdf['distance'] < 30), 'distscore'] = 3
 closest_stationdf.loc[(closest_stationdf['distance'] < 20), 'distscore'] = 2
 closest_stationdf.loc[(closest_stationdf['distance'] < 10), 'distscore'] = 1
 
-# TODO 10/2 - figure out how to do like...tiered matching
+# convert placeid to int
+closest_stationdf['placeid'] = closest_stationdf['placeid'].astype('int64')
+
+# i want to get this where the placeid is the index, the dist score is the header, and the station ids are the entries
+binlist = closest_stationdf[closest_stationdf['distscore'] < 4].groupby(['placeid','distscore'])['stationid'].apply(list)
+binlist = binlist.reset_index()
+binlist['stationid'] = binlist.stationid.apply(set)
+binlist = binlist.pivot(index='placeid',columns='distscore',values='stationid')
 
 # need to get stationid into weatherdatatest via lat/long (which station goes with which observation)
 stationreadings = stations.merge(weatherdatatest, on=['latitude', 'longitude']) # so we'll just want one of these rows for weather data
@@ -121,31 +72,25 @@ stationreadings['datetimecentral'] = stationreadings.datetime.dt.tz_convert('US/
 
 
 ################################################
-# Add placeid and closest stationid to trips
+# Add placeid to trips
 # get placeid into trips via lat/long
 tripswplaceid = trips.merge(uniplaces, on=['latitude', 'longitude'])
 
-# no station id added
+# prepare time, add station categories
 trips2 = tripswplaceid[tripswplaceid['deptime'] != "-1"]
 trips2['deptimedt'] = pd.to_datetime(trips2['deptime'], utc=False)
 trips2['deptimedtcentral'] = pd.to_datetime(trips2['deptimedt']).dt.tz_localize('US/Central')
 trips2.reset_index(inplace=True)
+trips2 = trips2.merge(binlist,left_on='placeid',right_on=binlist.index)
+trips2[[1,2,3]] = trips2[[1,2,3]].fillna(999)
+trips2.loc[trips2[1] == 999, [1]] = trips2[1].apply(lambda x: [x])
+trips2.loc[trips2[2] == 999, [2]] = trips2[2].apply(lambda x: [x])
+trips2.loc[trips2[3] == 999, [3]] = trips2[3].apply(lambda x: [x])
 
-# closest station id added
-closest_stationdf['placeid'] = closest_stationdf['placeid'].astype('int64')
-# tripswstation = tripswplaceid.merge(closest_stationdf, on='placeid')
-
-# tripswstationdep = tripswstation[tripswstation['deptime'] != "-1"]
-# tripswstationdep['deptimedt'] = pd.to_datetime(tripswstationdep['deptime'], utc=False)
-# tripswstationdep['deptimedtcentral'] = pd.to_datetime(tripswstationdep['deptimedt']).dt.tz_localize('US/Central')
-# tripswstationdep.reset_index(inplace=True)
-
-# TODO: if you want the list of all within x miles
 
 # adding weather columns in
-for x in [#'stationid',
-          'heat_index_c','heat_index_f','relative_humidity','temp_c','temp_f','weather',
-         'wind_gust_mph','wind_mph','windchill_c','windchill_f']:
+for x in ['stationid','heat_index_c','heat_index_f','relative_humidity','temp_c','temp_f','weather',
+         'wind_gust_mph','wind_mph','windchill_c','windchill_f','score']:
     trips2[x] = np.nan
 trips2['datetimecentral'] = pd.datetime(2099, 9, 9, 9, 9, 9, 9)
 
@@ -155,60 +100,89 @@ trips3 = trips2.copy()
 
 ################################################
 # Weather Assignment
+
+def getReading(stationlist, timebefore, timeafter, score):
+    choices = stationreadings[stationreadings['stationid'].isin(stationlist)].sort_values('datetimecentral',
+                                                                                  ascending=True)
+    choicesseries = choices['datetimecentral']
+    choiceslist = [x for x in choicesseries]
+    t = bisect.bisect_left(choiceslist, time)
+    # t is the id of the entry from choiceslist one after timetomatch
+    readingb = choices[choices['datetimecentral'] == choiceslist[t - 1]]
+    if len(readingb) > 1:
+        readingb = readingb.iloc[[0]]
+
+    try:
+        readinga = choices[choices['datetimecentral'] == choiceslist[t]]
+        if len(readinga) > 1:
+            readinga = readinga.iloc[[0]]
+    except IndexError:
+        timediffb = time - readingb['datetimecentral']
+        if (timediffb < timebefore).all:
+            readingb.index = [i]
+            readingb['score'] = score
+            plugin = readingb[['stationid',
+                               'heat_index_c', 'heat_index_f', 'relative_humidity', 'temp_c', 'temp_f',
+                               'weather', 'wind_gust_mph', 'wind_mph', 'windchill_c', 'windchill_f', 'datetimecentral',
+                               'score']]
+            trips3.update(plugin)
+            return
+
+    timediffb = time - readingb['datetimecentral']
+    timediffa = readinga['datetimecentral'] - time
+
+    # might want to change this
+    if (timediffb < timebefore).all:
+        readingb.index = [i]
+        readingb['score'] = score
+        plugin = readingb[['stationid',
+                           'heat_index_c', 'heat_index_f', 'relative_humidity', 'temp_c', 'temp_f',
+                           'weather', 'wind_gust_mph', 'wind_mph', 'windchill_c', 'windchill_f', 'datetimecentral', 'score']]
+        trips3.update(plugin)
+    elif (timediffa < timeafter).all:
+        readinga.index = [i]
+        readinga['score'] = score
+        plugin = readinga[['stationid',
+                           'heat_index_c', 'heat_index_f', 'relative_humidity', 'temp_c', 'temp_f',
+                           'weather', 'wind_gust_mph', 'wind_mph', 'windchill_c', 'windchill_f', 'datetimecentral', 'score']]
+        trips3.update(plugin)
+    else:
+        getReading(two, '01:00:00', '00:30:00', 'B')
+
+
 starttime = time.time()
 readingsdict = {}
 
-binlist = closest_stationdf[closest_stationdf['distscore'] < 4].groupby(['placeid','distscore'])['stationid'].apply(list)
-binlist = binlist.reset_index()
-binlist['stationid'] = binlist.stationid.apply(set)
-binlist.set_index('placeid',inplace=True)
-# i want to get this where the placeid is the index, the dist score is the header, and the station ids are the entries
 
-trips3.merge(closest_stationdf[closest_stationdf['distscore'] != 4], on='placeid')
+for i in range(0,1000):
+    one = list(trips3.loc[i][1])
+    two = list(trips3.loc[i][2])
+    three = list(trips3.loc[i][3])
 
-for i in range(0,len(trips3)):
-    trips3
+    # this is wasteful - improve!
+    if 999 in one:
+        one.remove(999)
+    if 999 in two:
+        two.remove(999)
+    if 999 in three:
+        three.remove(999)
 
-trips3
-closest_stationdf
-stationreadings
+    time = trips3.loc[i]['deptimedtcentral']
+
+    if len(one) > 0:
+        getReading(one, '01:00:00', '00:30:00', 'A')
+
+        # if len(readings) > 1:
+        #     readings = readings.iloc[[0]]
+
+    elif len(two) > 0:
+        getReading(two, '01:00:00', '00:30:00', 'B')
+
+    elif len(three) > 0:
+        getReading(three, '02:00:00', '01:00:00', 'C')
 
 
-
-
-
-
-for i in range(0, len(trips3)):
-    if i % 10000 == 0:
-        print(i)
-    acceptablelist = tripswstationdep.loc[i]['stationid']   # or 'stationidlist'
-    if acceptablelist == 999:
-        continue
-    else:
-        timetomatch = tripswstationdep.loc[i]['deptimedtcentral']
-
-        # you can either match closest or closest time in a list
-        # match closest time in a list implementation
-        #choices = stationreadings[stationreadings['stationid'].isin(acceptablelist)].sort_values('datetimecentral',ascending=True)
-
-        # match closest station implementation
-        choices = stationreadings[stationreadings['stationid'] == acceptablelist].sort_values('datetimecentral',ascending=True)
-
-        choicesseries = choices['datetimecentral']
-        choiceslist = [x for x in choicesseries]
-        t = bisect.bisect_left(choiceslist, timetomatch)
-        # t is the id of the entry from choiceslist one after timetomatch
-        readings = choices[choices['datetimecentral'] == choiceslist[t-1]]
-        if len(readings) > 1:
-            readings = readings.iloc[[0]]
-        readings.index = [i]
-        plugin = readings[[#'stationid',
-                           'heat_index_c', 'heat_index_f', 'relative_humidity', 'temp_c', 'temp_f',
-                                          'weather', 'wind_gust_mph', 'wind_mph', 'windchill_c', 'windchill_f', 'datetimecentral']]
-        # updates on index
-        tripswstationdep.update(plugin)
-
-tripswstationdep.to_csv("D:/weather/2019_try2/2019results2.csv")
+trips3.to_csv("D:/weather/2019_try2/2019results2.csv")
 print(time.time() - starttime)
 
 
