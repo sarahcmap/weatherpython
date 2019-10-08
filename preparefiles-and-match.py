@@ -87,7 +87,6 @@ trips2.loc[trips2[1] == 999, [1]] = trips2[1].apply(lambda x: [x])
 trips2.loc[trips2[2] == 999, [2]] = trips2[2].apply(lambda x: [x])
 trips2.loc[trips2[3] == 999, [3]] = trips2[3].apply(lambda x: [x])
 
-
 # adding weather columns in
 for x in ['stationid','heat_index_c','heat_index_f','relative_humidity','temp_c','temp_f','weather',
          'wind_gust_mph','wind_mph','windchill_c','windchill_f','score']:
@@ -101,98 +100,117 @@ trips3 = trips2.copy()
 ################################################
 # Weather Assignment
 
-def getReading(stationlist, timebefore, timeafter, score):
+def getReading(stationlist, timebefore, timeafter, score, timem, i):
     choices = stationreadings[stationreadings['stationid'].isin(stationlist)].sort_values('datetimecentral',
                                                                                   ascending=True)
     choicesseries = choices['datetimecentral']
     choiceslist = [x for x in choicesseries]
-    t = bisect.bisect_left(choiceslist, time)
+    t = bisect.bisect_left(choiceslist, timem)
     # t is the id of the entry from choiceslist one after timetomatch
     readingb = choices[choices['datetimecentral'] == choiceslist[t - 1]]
     if len(readingb) > 1:
         readingb = readingb.iloc[[0]]
-
-    try:
+    try:    # normal
         readinga = choices[choices['datetimecentral'] == choiceslist[t]]
         if len(readinga) > 1:
             readinga = readinga.iloc[[0]]
+
+        timediffb = timem - readingb['datetimecentral']
+        if (timediffb < timebefore).bool():
+            readingb.index = [i]
+            readingb['score'] = score
+            plugin = readingb[['stationid',
+                               'heat_index_c', 'heat_index_f', 'relative_humidity', 'temp_c', 'temp_f',
+                               'weather', 'wind_gust_mph', 'wind_mph', 'windchill_c', 'windchill_f',
+                               'datetimecentral',
+                               'score']]
+            return plugin
+
+        timediffa = readinga['datetimecentral'] - timem
+        if (timediffa < timeafter).bool():
+            readinga.index = [i]
+            readinga['score'] = score
+            plugin = readinga[['stationid',
+                               'heat_index_c', 'heat_index_f', 'relative_humidity', 'temp_c', 'temp_f',
+                               'weather', 'wind_gust_mph', 'wind_mph', 'windchill_c', 'windchill_f',
+                               'datetimecentral',
+                               'score']]
+            return plugin
+
     except IndexError:
-        timediffb = time - readingb['datetimecentral']
-        if (timediffb < timebefore).all:
+        # proceed with only before reading
+        timediffb = timem - readingb['datetimecentral']
+        if (timediffb < timebefore).bool():
             readingb.index = [i]
             readingb['score'] = score
             plugin = readingb[['stationid',
                                'heat_index_c', 'heat_index_f', 'relative_humidity', 'temp_c', 'temp_f',
                                'weather', 'wind_gust_mph', 'wind_mph', 'windchill_c', 'windchill_f', 'datetimecentral',
                                'score']]
-            trips3.update(plugin)
-            return
+            return plugin
 
-    timediffb = time - readingb['datetimecentral']
-    timediffa = readinga['datetimecentral'] - time
-
-    # might want to change this
-    if (timediffb < timebefore).all:
-        readingb.index = [i]
-        readingb['score'] = score
-        plugin = readingb[['stationid',
-                           'heat_index_c', 'heat_index_f', 'relative_humidity', 'temp_c', 'temp_f',
-                           'weather', 'wind_gust_mph', 'wind_mph', 'windchill_c', 'windchill_f', 'datetimecentral', 'score']]
-        trips3.update(plugin)
-    elif (timediffa < timeafter).all:
-        readinga.index = [i]
-        readinga['score'] = score
-        plugin = readinga[['stationid',
-                           'heat_index_c', 'heat_index_f', 'relative_humidity', 'temp_c', 'temp_f',
-                           'weather', 'wind_gust_mph', 'wind_mph', 'windchill_c', 'windchill_f', 'datetimecentral', 'score']]
-        trips3.update(plugin)
-    else:
-        getReading(two, '01:00:00', '00:30:00', 'B')
+    return pd.Series()
 
 
-starttime = time.time()
-readingsdict = {}
+def readingProcess(start, end):
+    starttime = time.time()
+
+    for i in range(start, end):
+        one = list(trips3.loc[i][1])
+        two = list(trips3.loc[i][2])
+        three = list(trips3.loc[i][3])
+
+        # this is wasteful - improve!
+        if 999 in one:
+            one.remove(999)
+        if 999 in two:
+            two.remove(999)
+        if 999 in three:
+            three.remove(999)
+
+        timem = trips3.loc[i]['deptimedtcentral']
+
+        while True:
+            if len(one) > 0:
+                plugin = getReading(one, '01:00:00', '00:30:00', 'A', timem, i)
+                if not plugin.empty:
+                    trips3.update(plugin)
+                    break
+                if plugin.empty:
+                    one.clear()
+
+            if len(two) > 0:
+                plugin = getReading(two, '01:00:00', '00:30:00', 'B', timem, i)
+                if not plugin.empty:
+                    trips3.update(plugin)
+                    break
+                if plugin.empty:
+                    two.clear()
+
+            if len(three) > 0:
+                plugin = getReading(three, '02:00:00', '01:00:00', 'C', timem, i)
+                if not plugin.empty:
+                    trips3.update(plugin)
+                    break
+                if plugin.empty:
+                    three.clear()
+
+            print('no matches')
+            break
+
+    trips3.to_csv("D:/weather/2019_try3/2019results3.csv")
+    print(time.time() - starttime)
 
 
-for i in range(0,1000):
-    one = list(trips3.loc[i][1])
-    two = list(trips3.loc[i][2])
-    three = list(trips3.loc[i][3])
-
-    # this is wasteful - improve!
-    if 999 in one:
-        one.remove(999)
-    if 999 in two:
-        two.remove(999)
-    if 999 in three:
-        three.remove(999)
-
-    time = trips3.loc[i]['deptimedtcentral']
-
-    if len(one) > 0:
-        getReading(one, '01:00:00', '00:30:00', 'A')
-
-        # if len(readings) > 1:
-        #     readings = readings.iloc[[0]]
-
-    elif len(two) > 0:
-        getReading(two, '01:00:00', '00:30:00', 'B')
-
-    elif len(three) > 0:
-        getReading(three, '02:00:00', '01:00:00', 'C')
-
-
-trips3.to_csv("D:/weather/2019_try2/2019results2.csv")
-print(time.time() - starttime)
-
+readingProcess(0, len(trips3))
 
 ################################################
 # Post-processing
 # reading back in and out to get the tz correct (currently, datetimecentral is actually showing UTC)
-tripswdata = pd.read_csv("D:/weather/2019_try2/2019results2.csv")
+tripswdata = pd.read_csv("D:/weather/2019_try3/2019results2.csv")
 tripswdata.datetimecentral = pd.to_datetime(tripswdata['datetimecentral'], utc=True)
 tripswdata.datetimecentral = tripswdata.datetimecentral.dt.tz_convert('US/Central')
-tripswdata.to_csv("D:/weather/2019_try2/2019results_central.csv")
+tripswdata.to_csv("D:/weather/2019_try3/2019results_central.csv")
 
 # validation - should know time difference and miles for each trip
 tripswdata.placeid.describe()
@@ -204,7 +222,7 @@ tripswdata['hours'] = tripswdata['timediff'].astype('timedelta64[h]')
 
 tripswdata.groupby('stationid').agg({'hours': 'mean'})
 
-tripswdata.to_csv("D:/weather/2019_try2/tripswdataval2.csv")
+tripswdata.to_csv("D:/weather/2019_try3/tripswdataval2.csv")
 
 
 
