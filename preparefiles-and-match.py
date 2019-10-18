@@ -116,6 +116,7 @@ def getReading(stationlist, timebefore, timeafter, score, timem, i):
             readinga = readinga.iloc[[0]]
 
         timediffb = timem - readingb['datetimecentral']
+        # print(timediffb)
         if (timediffb < timebefore).bool():
             readingb.index = [i]
             readingb['score'] = score
@@ -127,6 +128,7 @@ def getReading(stationlist, timebefore, timeafter, score, timem, i):
             return plugin
 
         timediffa = readinga['datetimecentral'] - timem
+        # print(timediffa)
         if (timediffa < timeafter).bool():
             readinga.index = [i]
             readinga['score'] = score
@@ -140,6 +142,7 @@ def getReading(stationlist, timebefore, timeafter, score, timem, i):
     except IndexError:
         # proceed with only before reading
         timediffb = timem - readingb['datetimecentral']
+        # print(timediffb)
         if (timediffb < timebefore).bool():
             readingb.index = [i]
             readingb['score'] = score
@@ -159,6 +162,7 @@ def readingProcess(start, end):
         one = list(trips3.loc[i][1])
         two = list(trips3.loc[i][2])
         three = list(trips3.loc[i][3])
+        print(one, two, three)
 
         # this is wasteful - improve!
         if 999 in one:
@@ -177,6 +181,7 @@ def readingProcess(start, end):
                     trips3.update(plugin)
                     break
                 if plugin.empty:
+                    # print('oneempty')
                     one.clear()
 
             if len(two) > 0:
@@ -185,32 +190,38 @@ def readingProcess(start, end):
                     trips3.update(plugin)
                     break
                 if plugin.empty:
+                    # print('twoempty')
                     two.clear()
 
             if len(three) > 0:
-                plugin = getReading(three, '02:00:00', '01:00:00', 'C', timem, i)
+                plugin = getReading(three, '01:00:00', '00:30:00', 'C', timem, i)
                 if not plugin.empty:
                     trips3.update(plugin)
                     break
                 if plugin.empty:
+                    # print('threeempty')
                     three.clear()
 
+            plugin = pd.Series('F',index=[i],name='score')
+            trips3.update(plugin)
             print('no matches')
             break
 
-    trips3.to_csv("D:/weather/2019_try3/2019results3.csv")
+    trips3.to_csv("D:/weather/2019_try3/2019results4.csv")
     print(time.time() - starttime)
 
 
 readingProcess(0, len(trips3))
+# troubleshooting
+readingProcess(160, 175)
 
 ################################################
 # Post-processing
 # reading back in and out to get the tz correct (currently, datetimecentral is actually showing UTC)
-tripswdata = pd.read_csv("D:/weather/2019_try3/2019results2.csv")
+tripswdata = pd.read_csv("D:/weather/2019_try3/2019results4.csv")
 tripswdata.datetimecentral = pd.to_datetime(tripswdata['datetimecentral'], utc=True)
 tripswdata.datetimecentral = tripswdata.datetimecentral.dt.tz_convert('US/Central')
-tripswdata.to_csv("D:/weather/2019_try3/2019results_central.csv")
+tripswdata.to_csv("D:/weather/2019_try3/2019results_central4.csv")
 
 # validation - should know time difference and miles for each trip
 tripswdata.placeid.describe()
@@ -222,7 +233,7 @@ tripswdata['hours'] = tripswdata['timediff'].astype('timedelta64[h]')
 
 tripswdata.groupby('stationid').agg({'hours': 'mean'})
 
-tripswdata.to_csv("D:/weather/2019_try3/tripswdataval2.csv")
+tripswdata.to_csv("D:/weather/2019_try3/tripswdataval4.csv")
 
 
 
