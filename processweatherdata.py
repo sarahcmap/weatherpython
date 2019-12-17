@@ -27,6 +27,16 @@ nws18 = pd.read_csv("D:/weather/NWS_18.csv",
                            'mean_wave_degrees','wind_gust_mph','wind_gust_dir','wind_gust_kt','pressure_tendency_mb',
                            'heat_index_c','heat_index_f','heat_index_string'])
 
+nws16 = pd.read_csv("D:/weather/NWS_16.csv",
+                    names = ['weather','windchill_c','ob_url','windchill_f','pressure_mb','dewpoint_string','relative_humidity',
+                           'SourceID','dewpoint_f','location','dewpoint_c','latitude','wind_mph','temp_f',
+                             'station_id','pressure_string','windchill_string','temp_c','wind_string','pressure_in','wind_kt',
+                             'temperature_string','wind_dir','wind_degrees','observation_time','longitude','observation_time_rfc822','image',
+                             'privacy_policy_url','suggested_pickup_period','disclaimer_url','visibility_mi','two_day_history_url',
+                             'copyright_url','credit_URL','suggested_pickup','credit', 'icon_url_name','icon_url_base','wind_gust_kt',
+                             'wind_gust_mph','heat_index_c','heat_index_f','heat_index_string','mean_wave_degrees','mean_wave_dir','pressure_tendency_mb'])
+
+
 # I am getting the right time period for the NWS data to do the matching, which is 2018 9,10,11,12 and 2019 1,2,3,4,5
 nws18['datetime'] = pd.to_datetime(nws18['observation_time_rfc822'], utc=True)
 nws18.datetime = nws18.datetime.dt.tz_convert('US/Central')
@@ -39,10 +49,23 @@ nws19.datetime = nws19.datetime.dt.tz_convert('US/Central')
 nws19['year'] = nws19.datetime.dt.year
 nws19['month'] = nws19.datetime.dt.month
 
+# 2016
+nws16['datetime'] = pd.to_datetime(nws16['observation_time_rfc822'], utc=True)
+nws16.datetime = nws16.datetime.dt.tz_convert('US/Central')
+nws16['year'] = nws16.datetime.dt.year
+nws16['month'] = nws16.datetime.dt.month
+
 # looking for just 2018 sept, oct, nov to match the trips sample
-nws_timeperiod = nws18[(nws18['year']==2018) & (nws18['month'].isin([9,10,11,12]))]
-nws_timeperiod19 = nws19[(nws19['year']==2019) & (nws19['month'].isin([1,2,3,4,5]))]
+nws_timeperiod = nws18[(nws18['year'] == 2018) & (nws18['month'].isin([9, 10, 11, 12]))]
+nws_timeperiod19 = nws19[nws19['month'].isin([12, 1, 2, 3, 4, 5])]
+# looks like dec 18 is in 19
+nws_spring16 = nws16[nws16['month'].isin([2, 3, 4, 5, 6, 7])]
 
 nws_timeperiod.to_csv("D:/weather/NWS18selection.csv")
 # we're missing most december days - need to get the data again but not on the server yet
-nws_timeperiod19.to_csv("D:/weather/NWS19selection.csv")
+nws_timeperiod19.to_csv("D:/weather/NWS19selection_withdec.csv")
+nws_spring16.to_csv("D:/weather/nws_spring16.csv")
+
+# 2018-19
+nwsall = nws_timeperiod.append(nws_timeperiod19)
+nwsall.to_csv("D:/weather/NWSall.csv")
